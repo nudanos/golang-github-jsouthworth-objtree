@@ -1,14 +1,17 @@
 Source: golang-github-jsouthworth-objtree
 Section: devel
-Priority: extra
-Maintainer: Vyatta Package Maintainers <DL-vyatta-help@att.com>
-Build-Depends: debhelper (>= 9),
+Priority: optional
+Maintainer: NuDanOS Maintainers <jon@fernandez.tech>
+Build-Depends: debhelper-compat (= 13),
  dh-golang,
  golang-go,
  golang-dbus-dev,
- dbus-x11,
-Standards-Version: 3.9.7
+ dbus-x11
+Standards-Version: 4.7.2
 Homepage: https://github.com/jsouthworth/objtree
+Rules-Requires-Root: no
+Vcs-Git: https://github.com/nudanos/golang-github-jsouthworth-objtree.git
+Vcs-Browser: https://github.com/nudanos/golang-github-jsouthworth-objtree
 
 Package: golang-github-jsouthworth-objtree-dev
 Architecture: all
