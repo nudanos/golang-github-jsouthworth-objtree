@@ -1,0 +1,115 @@
+Description: go vet: do not copy a lock; keyed struct fields
+ Replacing an object that has children copied its multiWriterValue, an
+ atomic.Value and a sync.Mutex, by value ("assignment copies lock
+ value"): a copy made while the lock was held started out locked and its
+ next update hung. copyFrom takes the current value instead, with a test.
+ The introspect.Arg literals use keyed fields.
+Author: NuDanOS Maintainers <jon@fernandez.tech>
+Forwarded: no
+Last-Update: 2026-10-11
+---
+diff --git a/dbus.go b/dbus.go
+index 7ce7818..749f36c 100644
+--- a/dbus.go
++++ b/dbus.go
+@@ -137,6 +137,15 @@ func (value *multiWriterValue) Load() interface{} {
+ 	return value.value.Load()
+ }
+ 
++// copyFrom takes other's current value. The struct itself must not be
++// copied: it holds a lock, and a copy made while the lock was held would
++// start out locked.
++func (value *multiWriterValue) copyFrom(other *multiWriterValue) {
++	if v := other.Load(); v != nil {
++		value.value.Store(v)
++	}
++}
++
+ func (value *multiWriterValue) Update(fn func(interface{}) interface{}) {
+ 	value.writelk.Lock()
+ 	value.value.Store(fn(value.value.Load()))
+diff --git a/method.go b/method.go
+index a5f2f67..99cd5f8 100644
+--- a/method.go
++++ b/method.go
+@@ -38,9 +38,9 @@ func (method *Method) Introspect() introspect.Method {
+ 				continue
+ 			}
+ 			iarg := introspect.Arg{
+-				"",
+-				dbus.SignatureOfType(arg).String(),
+-				typ,
++				Name:      "",
++				Type:      dbus.SignatureOfType(arg).String(),
++				Direction: typ,
+ 			}
+ 			args = append(args, iarg)
+ 		}
+@@ -81,9 +81,9 @@ func (method *Method) IntrospectSignal() introspect.Signal {
+ 				continue
+ 			}
+ 			iarg := introspect.Arg{
+-				"",
+-				dbus.SignatureOfType(arg).String(),
+-				typ,
++				Name:      "",
++				Type:      dbus.SignatureOfType(arg).String(),
++				Direction: typ,
+ 			}
+ 			args = append(args, iarg)
+ 		}
+diff --git a/object.go b/object.go
+index cce4e4a..9906825 100644
+--- a/object.go
++++ b/object.go
+@@ -164,7 +164,7 @@ func (o *Object) rmChildObject(name string) {
+ 			// if there are children replace with placeholder
+ 			if obj.hasChildren() {
+ 				object := newObjectFromImpl(name, nil, o, o.bus)
+-				object.objects = obj.objects
++				object.objects.copyFrom(&obj.objects)
+ 				objects[name] = object
+ 			} else {
+ 				delete(objects, name)
+@@ -258,7 +258,7 @@ func (o *Object) addObject(name string, object *Object) {
+ 		if obj, ok := objects[name]; ok {
+ 			//there may be child objects of the object that is being
+ 			//replaced; keep them
+-			object.objects = obj.objects
++			object.objects.copyFrom(&obj.objects)
+ 		}
+ 		objects[name] = object
+ 		return objects
+diff --git a/object_test.go b/object_test.go
+index 2f676b6..84bd4e0 100644
+--- a/object_test.go
++++ b/object_test.go
+@@ -975,3 +975,28 @@ func TestObjectDeleteReceiver(t *testing.T) {
+ 	case <-time.After(time.Second):
+ 	}
+ }
++
++// Replacing an object keeps its children by copying the children map, not
++// the struct holding its lock: a lock held at the time of the copy left the
++// new object's lock held and its next update hung.
++func TestMultiWriterValueCopyFromDoesNotCopyLock(t *testing.T) {
++	var old multiWriterValue
++	old.value.Store(map[string]*Object{"child": nil})
++	old.writelk.Lock()
++	defer old.writelk.Unlock()
++	var n multiWriterValue
++	n.copyFrom(&old)
++	done := make(chan struct{})
++	go func() {
++		n.Update(func(v interface{}) interface{} { return v })
++		close(done)
++	}()
++	select {
++	case <-done:
++	case <-time.After(5 * time.Second):
++		t.Fatal("an update of the copy hung: the lock was copied")
++	}
++	if _, ok := n.Load().(map[string]*Object)["child"]; !ok {
++		t.Error("the children were not copied")
++	}
++}
