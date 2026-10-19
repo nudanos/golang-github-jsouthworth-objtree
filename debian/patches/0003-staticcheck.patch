@@ -1,0 +1,150 @@
+Description: staticcheck findings
+ Range loops without a blank value (S1005); one error string lowercased
+ (ST1005); godbus's deprecated SessionBusPrivateHandler and
+ SystemBusPrivateHandler replaced by local functions written the way godbus
+ 5.1 implements them (SA1019), so behaviour is unchanged.
+Author: NuDanOS Maintainers <jon@fernandez.tech>
+Forwarded: no
+Last-Update: 2026-10-19
+---
+--- a/dbus.go
++++ b/dbus.go
+@@ -68,20 +68,31 @@ func NewBusManager(
+ 	return handler, nil
+ }
+ 
++// sessionBusPrivateHandler and systemBusPrivateHandler replace godbus's
++// deprecated SessionBusPrivateHandler and SystemBusPrivateHandler, written
++// the way godbus 5.1 implements them.
++func sessionBusPrivateHandler(handler dbus.Handler, signalHandler dbus.SignalHandler) (*dbus.Conn, error) {
++	return dbus.SessionBusPrivate(dbus.WithHandler(handler), dbus.WithSignalHandler(signalHandler))
++}
++
++func systemBusPrivateHandler(handler dbus.Handler, signalHandler dbus.SignalHandler) (*dbus.Conn, error) {
++	return dbus.SystemBusPrivate(dbus.WithHandler(handler), dbus.WithSignalHandler(signalHandler))
++}
++
+ func NewSessionBusManager(name string) (*BusManager, error) {
+-	return NewBusManager(dbus.SessionBusPrivateHandler, name)
++	return NewBusManager(sessionBusPrivateHandler, name)
+ }
+ 
+ func NewAnonymousSessionBusManager() (*BusManager, error) {
+-	return NewAnonymousBusManager(dbus.SessionBusPrivateHandler)
++	return NewAnonymousBusManager(sessionBusPrivateHandler)
+ }
+ 
+ func NewSystemBusManager(name string) (*BusManager, error) {
+-	return NewBusManager(dbus.SystemBusPrivateHandler, name)
++	return NewBusManager(systemBusPrivateHandler, name)
+ }
+ 
+ func NewAnonymousSystemBusManager() (*BusManager, error) {
+-	return NewAnonymousBusManager(dbus.SystemBusPrivateHandler)
++	return NewAnonymousBusManager(systemBusPrivateHandler)
+ }
+ 
+ func (mgr *BusManager) Conn() *dbus.Conn {
+--- a/interface.go
++++ b/interface.go
+@@ -56,7 +56,7 @@ func (intf *Interface) Introspect() intr
+ 	getMethods := func() []introspect.Method {
+ 		methods := intf.impl.Methods()
+ 		out := make([]introspect.Method, 0, len(methods))
+-		for name, _ := range methods {
++		for name := range methods {
+ 			method, _ := intf.lookupMethod(name)
+ 			out = append(out, method.Introspect())
+ 		}
+@@ -67,7 +67,7 @@ func (intf *Interface) Introspect() intr
+ 	getSignals := func() []introspect.Signal {
+ 		signals := intf.impl.Signals()
+ 		out := make([]introspect.Signal, 0, len(signals))
+-		for name, _ := range signals {
++		for name := range signals {
+ 			signal, _ := intf.lookupSignal(name)
+ 			out = append(out, signal.IntrospectSignal())
+ 		}
+--- a/internal/reflect/reflect.go
++++ b/internal/reflect/reflect.go
+@@ -173,7 +173,7 @@ func (i *Interface) AsInterface(iface *I
+ 
+ func (i *Interface) Methods() map[string]*Method {
+ 	out := make(map[string]*Method)
+-	for k, _ := range i.typ.methods {
++	for k := range i.typ.methods {
+ 		out[k] = i.impl.methods[k]
+ 	}
+ 	return out
+@@ -181,7 +181,7 @@ func (i *Interface) Methods() map[string
+ 
+ func (i *Interface) Signals() map[string]*Method {
+ 	out := make(map[string]*Method)
+-	for k, _ := range i.typ.signals {
++	for k := range i.typ.signals {
+ 		out[k] = i.impl.signals[k]
+ 	}
+ 	return out
+@@ -231,7 +231,7 @@ type Method struct {
+ func NewMethod(method interface{}) (*Method, error) {
+ 	methodValue := reflect.ValueOf(method)
+ 	if methodValue.Kind() != reflect.Func {
+-		return nil, errors.New("Argument is not a function")
++		return nil, errors.New("argument is not a function")
+ 	}
+ 	return &Method{
+ 		value: methodValue,
+--- a/internal/reflect/reflect_test.go
++++ b/internal/reflect/reflect_test.go
+@@ -483,13 +483,13 @@ func TestObjectHasCorrectMethods(t *test
+ 		t.Fatal("unexpected nil")
+ 	}
+ 	obj_methods := obj.Methods()
+-	for k, _ := range methods {
++	for k := range methods {
+ 		if _, exists := obj_methods[k]; !exists {
+ 			t.Fatal("Mismatched method", k)
+ 		}
+ 	}
+ 
+-	for k, _ := range obj_methods {
++	for k := range obj_methods {
+ 		if _, exists := methods[k]; !exists {
+ 			t.Fatal("Mismatched method", k)
+ 		}
+@@ -734,13 +734,13 @@ func TestInterfaceMethods(t *testing.T)
+ 	}
+ 
+ 	iface_methods_ret := iface1.Methods()
+-	for k, _ := range iface_methods {
++	for k := range iface_methods {
+ 		if _, exists := iface_methods_ret[k]; !exists {
+ 			t.Fatal("Mismatched method", k)
+ 		}
+ 	}
+ 
+-	for k, _ := range iface_methods_ret {
++	for k := range iface_methods_ret {
+ 		if _, exists := iface_methods[k]; !exists {
+ 			t.Fatal("Mismatched method", k)
+ 		}
+--- a/object.go
++++ b/object.go
+@@ -52,7 +52,7 @@ func newObjectFromImpl(
+ func (o *Object) removeListeners() {
+ 	o.listeners.Update(func(value interface{}) interface{} {
+ 		for dbusIfaceName, intf := range value.(map[string]*Interface) {
+-			for sigName, _ := range intf.impl.Methods() {
++			for sigName := range intf.impl.Methods() {
+ 				if o.bus == nil {
+ 					continue
+ 				}
+@@ -240,7 +240,7 @@ func (o *Object) addListener(name string
+ 		}
+ 		listeners[name] = iface
+ 		if o.bus != nil {
+-			for method_name, _ := range iface.impl.Methods() {
++			for method_name := range iface.impl.Methods() {
+ 				o.bus.state.AddMatchSignal(o.bus.conn,
+ 					name, method_name)
+ 			}

@@ -6,7 +6,8 @@ Build-Depends: debhelper-compat (= 13),
  dh-golang,
  golang-go,
  golang-dbus-dev,
- dbus-x11
+ dbus-x11,
+ go-staticcheck <!nocheck>
 Standards-Version: 4.7.2
 Homepage: https://github.com/jsouthworth/objtree
 Rules-Requires-Root: no
