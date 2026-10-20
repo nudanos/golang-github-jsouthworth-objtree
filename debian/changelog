@@ -1,3 +1,10 @@
+golang-github-jsouthworth-objtree (1.0-0vyatta5+nudanos3) trixie; urgency=medium
+
+  * Code-quality lint fixes (distro docs/porting.md): analyzer findings
+    fixed, see the git log.
+
+ -- NuDanOS Maintainers <jon@fernandez.tech>  Tue, 20 Oct 2026 11:56:41 +0000
+
 golang-github-jsouthworth-objtree (1.0-0vyatta5+nudanos2) trixie; urgency=medium
 
   * go vet every package. debian/patches/0002: replacing an object no
